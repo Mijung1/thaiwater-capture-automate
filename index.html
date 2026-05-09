@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบติดตามระดับน้ำ (Rust)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = { theme: { extend: { colors: { bg: '#0d1b2a', panel: '#132232', border: '#1e3a52', accent: '#0ea5e9', text: '#e2e8f0', subtext: '#94a3b8' }, fontFamily: { sans: ['Sarabun', 'sans-serif'] }}}}
+    </script>
+</head>
+<body class="bg-bg text-text min-h-screen p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold">💧 ระบบติดตามระดับน้ำ</h1>
+            <div id="clock" class="text-accent text-2xl font-mono font-bold">--:--:--</div>
+        </div>
+
+        <button onclick="runAll()" id="run-btn" class="w-full bg-accent hover:bg-sky-400 text-white font-bold py-3 rounded-lg mb-8 transition shadow-lg">
+            🚀 รันข้อความและแคปภาพทั้งหมด
+        </button>
+
+        <div id="status" class="text-subtext mb-4">พร้อมใช้งาน</div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-panel border border-border rounded-lg overflow-hidden flex flex-col">
+                <div class="bg-border px-4 py-3 flex justify-between items-center">
+                    <h2 class="font-bold text-lg">📍 สะพานมิตรภาพแม่น้ำสายแห่งที่ 1</h2>
+                    <span id="badge-004" class="text-sm px-3 py-1 rounded-full bg-gray-600 text-white">⬤ รอข้อมูล</span>
+                </div>
+                <div class="p-4 flex-grow flex flex-col">
+                    <div class="grid grid-cols-2 gap-2 mb-4">
+                        <button onclick="runText('004')" class="bg-border hover:bg-gray-700 py-2 rounded text-sm font-bold transition">📝 รันข้อความ</button>
+                        <button onclick="runImage('004')" class="bg-border hover:bg-gray-700 py-2 rounded text-sm font-bold transition">🖼 รันรูปภาพ</button>
+                    </div>
+
+                    <div class="bg-[#0b1724] border border-border rounded-lg p-3 mb-4 h-36 flex flex-col">
+                        <div class="flex flex-col sm:flex-row justify-between sm:items-center mb-3 border-b border-border pb-3 gap-2">
+                            <span class="text-sm font-bold text-accent whitespace-nowrap">📝 ตั้งค่าเวลาเปรียบเทียบ:</span>
+                            <div class="flex items-center space-x-2">
+                                <select id="sel-target-004" class="bg-panel border border-border text-white text-sm rounded px-2 py-1 cursor-pointer outline-none hidden w-20" onchange="updateTextFromSelect('004')"></select>
+                                <span class="text-sm text-subtext" id="vs-004" style="display: none;">เทียบกับ</span>
+                                <select id="sel-compare-004" class="bg-panel border border-border text-white text-sm rounded px-2 py-1 cursor-pointer outline-none hidden w-20" onchange="updateTextFromSelect('004')"></select>
+                            </div>
+                        </div>
+                        <textarea id="text-004" class="w-full bg-transparent text-text text-sm outline-none resize-none flex-grow" readonly></textarea>
+                    </div>
+                    
+                    <div class="bg-bg rounded-lg h-64 mb-4 border border-border flex items-center justify-center overflow-hidden relative">
+                        <span id="loading-004" class="text-subtext absolute hidden">⏳ กำลังถ่ายรูปเบราว์เซอร์...</span>
+                        <img id="img-004" src="" class="max-h-full object-contain hidden" alt="กราฟแม่น้ำสาย">
+                    </div>
+
+                    <div class="mt-auto grid grid-cols-2 gap-4">
+                        <button onclick="copyText('text-004')" class="w-full bg-border hover:bg-gray-700 py-2 rounded text-center cursor-pointer">📋 คัดลอกข้อความ</button>
+                        <a id="download-004" href="#" download="maesai_graph.png" class="w-full bg-border hover:bg-gray-700 py-2 rounded text-center hidden cursor-pointer">💾 บันทึกรูปกราฟ</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-panel border border-border rounded-lg overflow-hidden flex flex-col">
+                <div class="bg-border px-4 py-3 flex justify-between items-center">
+                    <h2 class="font-bold text-lg">📍 โจตาดา (บ้านแม่สามแลบ)</h2>
+                    <span id="badge-001" class="text-sm px-3 py-1 rounded-full bg-gray-600 text-white">⬤ รอข้อมูล</span>
+                </div>
+                <div class="p-4 flex-grow flex flex-col">
+                    <div class="grid grid-cols-2 gap-2 mb-4">
+                        <button onclick="runText('001')" class="bg-border hover:bg-gray-700 py-2 rounded text-sm font-bold transition">📝 รันข้อความ</button>
+                        <button onclick="runImage('001')" class="bg-border hover:bg-gray-700 py-2 rounded text-sm font-bold transition">🖼 รันรูปภาพ</button>
+                    </div>
+
+                    <div class="bg-[#0b1724] border border-border rounded-lg p-3 mb-4 h-36 flex flex-col">
+                        <div class="flex flex-col sm:flex-row justify-between sm:items-center mb-3 border-b border-border pb-3 gap-2">
+                            <span class="text-sm font-bold text-accent whitespace-nowrap">📝 ตั้งค่าเวลาเปรียบเทียบ:</span>
+                            <div class="flex items-center space-x-2">
+                                <select id="sel-target-001" class="bg-panel border border-border text-white text-sm rounded px-2 py-1 cursor-pointer outline-none hidden w-20" onchange="updateTextFromSelect('001')"></select>
+                                <span class="text-sm text-subtext" id="vs-001" style="display: none;">เทียบกับ</span>
+                                <select id="sel-compare-001" class="bg-panel border border-border text-white text-sm rounded px-2 py-1 cursor-pointer outline-none hidden w-20" onchange="updateTextFromSelect('001')"></select>
+                            </div>
+                        </div>
+                        <textarea id="text-001" class="w-full bg-transparent text-text text-sm outline-none resize-none flex-grow" readonly></textarea>
+                    </div>
+                    
+                    <div class="bg-bg rounded-lg h-64 mb-4 border border-border flex items-center justify-center overflow-hidden relative">
+                        <span id="loading-001" class="text-subtext absolute hidden">⏳ กำลังถ่ายรูปเบราว์เซอร์...</span>
+                        <img id="img-001" src="" class="max-h-full object-contain hidden" alt="กราฟโจตาดา">
+                    </div>
+
+                    <div class="mt-auto grid grid-cols-2 gap-4">
+                        <button onclick="copyText('text-001')" class="w-full bg-border hover:bg-gray-700 py-2 rounded text-center cursor-pointer">📋 คัดลอกข้อความ</button>
+                        <a id="download-001" href="#" download="jotada_graph.png" class="w-full bg-border hover:bg-gray-700 py-2 rounded text-center hidden cursor-pointer">💾 บันทึกรูปกราฟ</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        setInterval(() => document.getElementById('clock').innerText = new Date().toLocaleTimeString('th-TH'), 1000);
+
+        function updateStatus(msg) {
+            document.getElementById('status').innerText = msg;
+        }
+
+        // ตัวแปรเก็บข้อมูล
+        let stationData = { '004': [], '001': [] };
+        let stationMeta = { '004': { name: '', bank: 0 }, '001': { name: '', bank: 0 } };
+
+        async function runText(code) {
+            document.getElementById(`text-${code}`).value = "⏳ กำลังดึงข้อมูล...";
+            updateStatus(`กำลังดึงข้อความสถานี ${code}...`);
+            
+            try {
+                const res = await fetch(`/api/text/${code}`);
+                const data = await res.json();
+                
+                if(!data.error && data.data_points && data.data_points.length > 0) {
+                    stationData[code] = data.data_points;
+                    stationMeta[code] = { name: data.name, bank: data.bank_level };
+                    
+                    const selTarget = document.getElementById(`sel-target-${code}`);
+                    const selCompare = document.getElementById(`sel-compare-${code}`);
+                    
+                    selTarget.innerHTML = '';
+                    selCompare.innerHTML = '';
+                    
+                    // สร้างตัวเลือกเวลาใส่ใน Dropdown ทั้งสองตัว
+                    data.data_points.forEach((pt, index) => {
+                        selTarget.appendChild(new Option(pt.time, index));
+                        selCompare.appendChild(new Option(pt.time, index));
+                    });
+                    
+                    // ตั้งค่าเริ่มต้น: เวลาปัจจุบัน = ล่าสุด (0), เวลาเทียบ = ถอยไป 3-4 ค่าก่อนหน้า
+                    selTarget.selectedIndex = 0;
+                    selCompare.selectedIndex = Math.min(3, data.data_points.length - 1); 
+                    
+                    selTarget.classList.remove('hidden');
+                    selCompare.classList.remove('hidden');
+                    document.getElementById(`vs-${code}`).style.display = 'inline-block';
+                    
+                    updateTextFromSelect(code); // คำนวณทันที
+                    updateStatus(`✅ ดึงข้อมูลสถานี ${code} สำเร็จ!`);
+                } else {
+                    document.getElementById(`text-${code}`).value = "❌ ไม่มีข้อมูลของวันนี้";
+                }
+            } catch (e) { 
+                document.getElementById(`text-${code}`).value = "❌ ดึงข้อมูลไม่สำเร็จ";
+            }
+        }
+
+        // 🧮 ฟังก์ชันคำนวณข้อความเมื่อผู้ใช้เปลี่ยนเวลาใน Dropdown
+        function updateTextFromSelect(code) {
+            const targetIdx = document.getElementById(`sel-target-${code}`).value;
+            const compIdx = document.getElementById(`sel-compare-${code}`).value;
+            
+            if(!stationData[code] || stationData[code].length === 0) return;
+
+            const targetPt = stationData[code][targetIdx];
+            const compPt = stationData[code][compIdx];
+            const meta = stationMeta[code];
+
+            const diff = targetPt.value - compPt.value;
+            const below = meta.bank - targetPt.value;
+
+            let changeStr = "ทรงตัว";
+            if (Math.abs(diff) < 0.001) {
+                changeStr = "ทรงตัว";
+            } else if (diff > 0) {
+                changeStr = `เพิ่มขึ้น ${diff.toFixed(2)} ม.`;
+            } else {
+                changeStr = `ลดลง ${Math.abs(diff).toFixed(2)} ม.`;
+            }
+
+            // ประกอบร่างข้อความ
+            const summary = `ข้อมูล ${targetPt.time} น. (เวลาไทย) ระดับน้ำ${meta.name} ระดับน้ำ ${targetPt.value.toFixed(2)} ม.รทก. ต่ำกว่าตลิ่ง ${below.toFixed(2)} ม. ระดับน้ำ${changeStr}`;
+            
+            document.getElementById(`text-${code}`).value = summary;
+
+            // ปรับสีป้ายสถานะ (คำนวณจากเวลาเป้าหมาย)
+            let statusLabel = "⬤ ปลอดภัย";
+            let statusColor = "#22c55e";
+            if (below <= 0.0) {
+                statusLabel = "⬤ เกินตลิ่ง";
+                statusColor = "#ef4444";
+            } else if (below < 0.5) {
+                statusLabel = "⬤ ใกล้ตลิ่ง";
+                statusColor = "#f59e0b";
+            }
+
+            const badge = document.getElementById(`badge-${code}`);
+            badge.innerText = statusLabel;
+            badge.style.backgroundColor = statusColor;
+        }
+
+        async function runImage(code) {
+            document.getElementById(`loading-${code}`).classList.remove('hidden');
+            document.getElementById(`img-${code}`).classList.add('hidden');
+            document.getElementById(`download-${code}`).classList.add('hidden');
+            updateStatus(`⏳ กำลังเปิดเบราว์เซอร์ซ่อนตัวเพื่อแคปภาพสถานี ${code}...`);
+
+            try {
+                const res = await fetch(`/api/image/${code}`);
+                const data = await res.json();
+                if(!data.error) {
+                    const img = document.getElementById(`img-${code}`);
+                    img.src = data.image_url;
+                    img.classList.remove('hidden');
+
+                    const dl = document.getElementById(`download-${code}`);
+                    dl.href = data.image_url;
+                    dl.classList.remove('hidden');
+                    updateStatus(`✅ แคปภาพสถานี ${code} สำเร็จ!`);
+                } else {
+                    updateStatus(`❌ เกิดข้อผิดพลาดในการแคปภาพสถานี ${code}`);
+                }
+            } catch (e) { 
+                updateStatus(`❌ เกิดข้อผิดพลาดในการเชื่อมต่อ`);
+            } finally { 
+                document.getElementById(`loading-${code}`).classList.add('hidden'); 
+            }
+        }
+
+        async function runAll() {
+            document.getElementById('run-btn').disabled = true;
+            updateStatus('⏳ กำลังรันข้อมูลทั้งหมด...');
+            
+            await Promise.all([
+                runText('004'), runText('001'),
+                runImage('004'), runImage('001')
+            ]);
+            
+            updateStatus('✅ อัปเดตข้อมูลและแคปภาพทั้งหมดเสร็จสมบูรณ์!');
+            document.getElementById('run-btn').disabled = false;
+        }
+
+        function copyText(id) {
+            const copyText = document.getElementById(id);
+            copyText.select();
+            document.execCommand("copy");
+            updateStatus('✅ คัดลอกข้อความแล้ว');
+        }
+    </script>
+</body>
+</html>
