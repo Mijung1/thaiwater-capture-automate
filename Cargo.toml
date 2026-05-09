@@ -13,3 +13,6 @@ chrono = "0.4"
 tower-http = { version = "0.5", features = ["fs"] }
 headless_chrome = "1.0"
 anyhow = "1.0"
+opt-level = 'z'     # ปรับปรุงให้ขนาดไฟล์เล็กที่สุด
+codegen-units = 1   # ลดการประมวลผลขนานเพื่อประหยัด RAM
+panic = 'abort'     # ลด overhead ของระบบ
