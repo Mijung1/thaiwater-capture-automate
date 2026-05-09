@@ -31,6 +31,7 @@ struct ImageResponse {
     image_url: String,
 }
 
+// ข้อมูลสถานีที่รองรับ
 fn get_station_info(code: &str) -> (&'static str, &'static str, &'static str, f64, &'static str) {
     match code {
         "004" => ("1225531", "สถานีสะพานมิตรภาพแม่น้ำสายแห่งที่ 1", "แม่น้ำสาย", 397.59, "maesai_graph.png"),
@@ -41,6 +42,7 @@ fn get_station_info(code: &str) -> (&'static str, &'static str, &'static str, f6
 
 #[tokio::main]
 async fn main() {
+    // สร้างโฟลเดอร์สำหรับเก็บภาพแคปหน้าจอ
     std::fs::create_dir_all("images").ok();
 
     let app = Router::new()
@@ -49,18 +51,27 @@ async fn main() {
         .route("/api/image/:code", get(run_image))
         .nest_service("/images", ServeDir::new("images"));
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    println!("🚀 ระบบพร้อมใช้งาน (อัปเกรดเปรียบเทียบเวลาอิสระ)! ไปที่: http://127.0.0.1:3000");
+    // --- ส่วนสำคัญสำหรับการ Deploy บน Render ---
+    let port = std::env::var("PORT")
+        .unwrap_or_else(|_| "3000".to_string())
+        .parse::<u16>()
+        .expect("PORT must be a number");
+
+    // ต้องใช้ 0.0.0.0 เพื่อให้เข้าถึงจากภายนอกได้
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    println!("🚀 Server is starting on {}", addr);
+    // ---------------------------------------
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
 async fn serve_ui() -> Html<&'static str> {
+    // อ่านไฟล์ index.html ที่อยู่โฟลเดอร์เดียวกับโปรเจกต์
     Html(include_str!("../index.html"))
 }
 
-// 📝 API ดึงข้อมูลทั้งหมดของวันนี้ส่งไปให้ Frontend
+// API สำหรับดึงข้อมูลสรุปข้อความ
 async fn run_text(Path(code): Path<String>) -> impl IntoResponse {
     let (station_id, _, short_name, bank_level, _) = get_station_info(&code);
     if station_id.is_empty() {
@@ -73,6 +84,7 @@ async fn run_text(Path(code): Path<String>) -> impl IntoResponse {
     }
 }
 
+// API สำหรับสั่งแคปภาพกราฟ
 async fn run_image(Path(code): Path<String>) -> impl IntoResponse {
     let (_, search_name, short_name, _, img_name) = get_station_info(&code);
     if search_name.is_empty() {
@@ -99,13 +111,13 @@ async fn run_image(Path(code): Path<String>) -> impl IntoResponse {
     })).into_response()
 }
 
-// 📸 ฟังก์ชันคุมเบราว์เซอร์ Headless Chrome (เดิม)
+// ฟังก์ชันควบคุม Browser สำหรับแคปหน้าจอ
 fn capture_graph_with_cdp(search_name: &str, output_file: &str) -> Result<()> {
     let browser = Browser::new(
         LaunchOptions::default_builder()
-            .window_size(Some((1920, 1080)))
+            .window_size(Some((1280, 800)))
             .headless(true)
-            .sandbox(false)
+            .sandbox(false) // จำเป็นสำหรับการรันบน Docker/Cloud
             .build()
             .unwrap(),
     )?;
@@ -113,18 +125,19 @@ fn capture_graph_with_cdp(search_name: &str, output_file: &str) -> Result<()> {
     let tab = browser.new_tab()?;
     tab.navigate_to("https://www.thaiwater.net/water/wl")?;
     tab.wait_until_navigated()?;
-    std::thread::sleep(StdDuration::from_secs(6));
+    std::thread::sleep(StdDuration::from_secs(5));
 
+    // คลิกเพื่อปิด Modal แจ้งเตือนถ้ามี
     let _ = tab.evaluate("document.elementFromPoint(10, 10).click();", false);
-    std::thread::sleep(StdDuration::from_secs(1));
 
+    // ค้นหาชื่อสถานี
     let search_box = tab.wait_for_element("input[placeholder*='ค้นหา']")?;
     search_box.click()?;
-    let _ = tab.evaluate("document.querySelector(\"input[placeholder*='ค้นหา']\").value = '';", false);
     search_box.type_into(search_name)?;
     tab.press_key("Enter")?;
     std::thread::sleep(StdDuration::from_secs(2));
 
+    // คลิกปุ่มกราฟ
     let js_click = format!(r#"
         var btns = document.evaluate("//tr[contains(., '{}')]//button[contains(@title, 'กราฟ')]", document, null, XPathResult.ANY_TYPE, null);
         var btn = btns.iterateNext();
@@ -132,22 +145,17 @@ fn capture_graph_with_cdp(search_name: &str, output_file: &str) -> Result<()> {
     "#, search_name);
     let _ = tab.evaluate(&js_click, false);
 
-    let _ = tab.wait_for_element(".highcharts-container svg");
-    std::thread::sleep(StdDuration::from_secs(4));
+    tab.wait_for_element(".highcharts-container svg")?;
+    std::thread::sleep(StdDuration::from_secs(3));
 
+    // Force ให้ Tooltip แสดงผลเลขระดับน้ำล่าสุด
     let js_force_tooltip = r#"
         try {
             if (typeof Highcharts !== 'undefined') {
                 Highcharts.charts.forEach(function(chart) {
                     if (chart && chart.series && chart.series[0] && chart.series[0].points) {
                         var points = chart.series[0].points;
-                        var lastPoint = null;
-                        for (var i = points.length - 1; i >= 0; i--) {
-                            if (points[i].y !== null && points[i].y !== undefined) {
-                                lastPoint = points[i];
-                                break;
-                            }
-                        }
+                        var lastPoint = points.filter(p => p.y !== null).pop();
                         if (lastPoint) {
                             chart.tooltip.refresh(lastPoint);
                             lastPoint.setState('hover');
@@ -155,52 +163,20 @@ fn capture_graph_with_cdp(search_name: &str, output_file: &str) -> Result<()> {
                     }
                 });
             }
-        } catch(e) { console.error(e); }
-
-        var svg = document.querySelector('.highcharts-container svg');
-        if (svg) {
-            var rect = svg.getBoundingClientRect();
-            var cx = rect.x + (rect.width * 0.5);
-            var ex = rect.x + (rect.width * 0.98);
-            var ey = rect.y + (rect.height * 0.45);
-            function dispatchMouse(x, y) {
-                var el = document.elementFromPoint(x, y) || svg;
-                ['pointerover', 'pointerenter', 'mouseenter', 'mouseover', 'mousemove', 'pointermove'].forEach(function(t) {
-                    el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window }));
-                });
-            }
-            dispatchMouse(cx, ey);
-            setTimeout(function() { dispatchMouse(ex, ey); }, 500);
-        }
+        } catch(e) {}
     "#;
     let _ = tab.evaluate(js_force_tooltip, false);
-    std::thread::sleep(StdDuration::from_secs(3));
+    std::thread::sleep(StdDuration::from_secs(2));
 
-    let js_modal = r#"
-        var els = document.querySelectorAll('*');
-        var found = false;
-        for (var i = 0; i < els.length; i++) {
-            var el = els[i];
-            if (el.innerText && el.innerText.includes('กราฟระดับน้ำ')) {
-                var rect = el.getBoundingClientRect();
-                if (rect.width > 600 && rect.height > 400 && rect.width < 1400) {
-                    el.id = 'target-modal-for-screenshot';
-                    el.scrollIntoView({block: 'center'});
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (!found) {
-            var fallback = document.querySelector('.highcharts-container');
-            if (fallback) fallback.id = 'target-modal-for-screenshot';
-        }
+    // เลือกเฉพาะส่วนของ Modal กราฟเพื่อแคปภาพ
+    let js_identify = r#"
+        var modal = document.querySelector('.modal-content') || document.querySelector('.highcharts-container');
+        if(modal) modal.id = 'target-screenshot';
     "#;
-    let _ = tab.evaluate(js_modal, false);
-    std::thread::sleep(StdDuration::from_secs(1));
+    let _ = tab.evaluate(js_identify, false);
 
-    let png_data = if let Ok(modal) = tab.wait_for_element("#target-modal-for-screenshot") {
-        modal.capture_screenshot(CaptureScreenshotFormatOption::Png)?
+    let png_data = if let Ok(el) = tab.wait_for_element("#target-screenshot") {
+        el.capture_screenshot(CaptureScreenshotFormatOption::Png)?
     } else {
         tab.capture_screenshot(CaptureScreenshotFormatOption::Png, None, None, true)?
     };
@@ -209,48 +185,50 @@ fn capture_graph_with_cdp(search_name: &str, output_file: &str) -> Result<()> {
     Ok(())
 }
 
-// 📝 ดึงข้อมูลของวันนี้ และส่งเป็น Array ให้หน้าเว็บ
+// ฟังก์ชันดึงข้อมูล JSON จาก API ของ Thaiwater
 async fn fetch_text_summary(station_id: &str, name: &str, bank_level: f64) -> Result<TextResponse, String> {
     let now = Local::now();
     let end_date = now.format("%Y-%m-%d").to_string();
-    let start_date = (now - Duration::days(5)).format("%Y-%m-%d").to_string();
-    let url = format!("https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel_graph?station_type=tele_waterlevel&station_id={}&start_date={}&end_date={}", station_id, start_date, end_date);
+    let start_date = (now - Duration::days(1)).format("%Y-%m-%d").to_string();
+    
+    let url = format!(
+        "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel_graph?station_type=tele_waterlevel&station_id={}&start_date={}&end_date={}",
+        station_id, start_date, end_date
+    );
     
     let client = reqwest::Client::new();
-    let res = client.get(&url).header("User-Agent", "Mozilla/5.0").send().await.map_err(|_| "Connection Failed")?;
+    let res = client.get(&url)
+        .header("User-Agent", "Mozilla/5.0")
+        .send()
+        .await
+        .map_err(|e| format!("Connection Error: {}", e))?;
     
-    if let Ok(json) = res.json::<serde_json::Value>().await {
-        if let Some(graph_data) = json["data"]["graph_data"].as_array() {
-            let valid_data: Vec<_> = graph_data.iter().filter(|d| !d["value"].is_null()).collect();
-            
-            if valid_data.is_empty() { return Err("ไม่มีข้อมูล".to_string()); }
+    let json: serde_json::Value = res.json().await.map_err(|e| format!("JSON Error: {}", e))?;
+    
+    if let Some(graph_data) = json["data"]["graph_data"].as_array() {
+        let mut results = Vec::new();
+        let today_str = now.format("%Y-%m-%d").to_string();
 
-            let last_datetime = valid_data.last().unwrap()["datetime"].as_str().unwrap_or("");
-            let latest_date = if last_datetime.len() >= 10 { &last_datetime[0..10] } else { &end_date };
+        for curr in graph_data {
+            let dt = curr["datetime"].as_str().unwrap_or("");
+            if !dt.starts_with(&today_str) { continue; } // กรองเอาเฉพาะของวันนี้
 
-            let mut results = Vec::new();
-
-            for curr in valid_data.iter() {
-                let ct_full = curr["datetime"].as_str().unwrap_or("");
-                if !ct_full.starts_with(latest_date) { continue; } // เอาเฉพาะของวันนี้
-
-                let cv = curr["value"].as_f64().unwrap_or(0.0);
-                let ct_display = if ct_full.len() >= 16 { &ct_full[11..16] } else { "00:00" };
-
+            if let Some(val) = curr["value"].as_f64() {
                 results.push(DataPoint {
-                    time: ct_display.to_string(),
-                    value: cv,
+                    time: dt[11..16].to_string(), // ตัดเอาเฉพาะ HH:mm
+                    value: val,
                 });
             }
-
-            results.reverse(); // เรียงจากเวลาล่าสุดขึ้นก่อน
-
-            return Ok(TextResponse {
-                name: name.to_string(),
-                bank_level,
-                data_points: results,
-            });
         }
+
+        results.reverse(); // เอาเวลาล่าสุดขึ้นก่อน
+
+        Ok(TextResponse {
+            name: name.to_string(),
+            bank_level,
+            data_points: results,
+        })
+    } else {
+        Err("ไม่พบข้อมูลกราฟ".to_string())
     }
-    Err("ดึงข้อมูลไม่สำเร็จ".to_string())
 }
